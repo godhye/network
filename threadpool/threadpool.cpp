@@ -34,7 +34,7 @@ public:
 	~Threadpool();
 	//add job
 	template <class F , class... Args>
-	std::future<typename std::result_of<F(Args...)>::type> EnqueueJob(F f, Args... args);
+	std::future<typename std::result_of<F(Args...)>::type> EnqueueJob(F f, Args&&... args);
 	//void EnqueueJob(std::function<void()> job);
 
 private:
@@ -156,7 +156,7 @@ int main()
 }
 
 template<class F, class ...Args>
-std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F f, Args ...args)
+std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F f, Args&& ...args)
 {
 	if (stop_all) {
 		throw std::runtime_error("ThreadPool 사용 중지");
@@ -167,7 +167,8 @@ std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F 
 	//job은 지역변수로 이 함수 리턴되면 파괴 -> shared_ptr에 담아줌(사용하는것 없을때 소멸됨 )
 	//std::packaged_task<return_type()> job(std::bind(f, args...));
 
-	auto job = std::make_shared<std::packaged_task<return_type()>>(std::bind(f, args...));
+	//레퍼런스 전달위해 forward사용
+	auto job = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<F>(f), std::forward(args)...));
 	std::future<return_type> job_result_future = job->get_future();
 	{
 		std::lock_guard<std::mutex> lock(mu_jobq);
