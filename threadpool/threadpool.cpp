@@ -37,11 +37,14 @@ public:
 private:
 
 	size_t nthreads;
+
+	//thread가 담긴 벡터
 	std::vector<std::thread> workerthreads;
 	
+	//실행될 함수가 담긴 큐
 	std::queue<std::function<void()>> jobs;
 	
-	//이벤트 개체로 신호받을때 까지 쓰레드 실행 멈춤 notify_xxx로 다시 실행 
+	//이벤트 개체, 신호받을때 까지 쓰레드 실행 멈춤 notify_xxx로 다시 실행 
 	std::condition_variable cv_jobq;
 	std::mutex mu_jobq;
 
@@ -107,9 +110,9 @@ void Threadpool::WorkThread()
 {
 	while (true) 
 	{
-		//뮤텍스 걸고
+		//Job의 데이터 접근 위해 뮤텍스 걸고 , job()처리후에 뮤텍스 획득
 		std::unique_lock<std::mutex> lock(mu_jobq);
-		//조건만족할때 까지 wait
+		//조건만족할때 까지 wait = 뮤텍스 반납하고 스레드 수행 중지
 		cv_jobq.wait(lock, [this]() {return !this->jobs.empty() || stop_all; });
 		if (stop_all && this->jobs.empty())
 		{
