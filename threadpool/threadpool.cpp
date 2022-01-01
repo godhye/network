@@ -26,13 +26,16 @@ thread 벡터 , 함수 받을 수 있게 void형으로
 
 #include <thread>
 #include <condition_variable>
+#include <future>
 class Threadpool {
 
 public:
 	Threadpool(size_t num);
 	~Threadpool();
 	//add job
-	void EnqueueJob(std::function<void()> job);
+	template <class F , class... Args>
+	std::future<typename std::result_of<F(Args...)>::type> EnqueueJob(F f, Args... args);
+	//void EnqueueJob(std::function<void()> job);
 
 private:
 
@@ -55,7 +58,9 @@ private:
 };
 
 
-
+ //	std::packaged_task<return_type()> job(std::bind(f, args...));
+	//std::future<typename std::result_of<F(Args...)>::type> EnqueueJob(F f, Args... args);
+ //
 
 Threadpool::Threadpool(size_t num)
 	:nthreads(num), stop_all(false)
@@ -78,25 +83,27 @@ Threadpool::~Threadpool()
 	}
 }
 
-void Threadpool::EnqueueJob(std::function<void()> job)
-{
-	//실행중이면
-	if (stop_all)
-	{
-		throw std::runtime_error("ThreadPool 사용 중지됨");
-	}
-	{	
-		//뮤텍스 on
-		std::lock_guard<std::mutex> lock(mu_jobq);
-		//queue에 추가
-		jobs.push(std::move(job));
-
-	}
-	//job 추가 알림 
-	cv_jobq.notify_one();
-	
- 
-}
+//void Threadpool::EnqueueJob(std::function<void()> job)
+//{
+//	//실행중이면
+//	if (stop_all)
+//	{
+//		throw std::runtime_error("ThreadPool 사용 중지됨");
+//	}
+//	{	
+//		//뮤텍스 on
+//		std::future<return_type> job_result_future = job.get_future();
+//
+//		std::lock_guard<std::mutex> lock(mu_jobq);
+//		//queue에 추가
+//		jobs.push([&job]() {job(); });
+//
+//	}
+//	//job 추가 알림 
+//	cv_jobq.notify_one();
+//	
+// 
+//}
 
 //unique_lock
 //lock_guard
@@ -146,4 +153,29 @@ int main()
 		pool.EnqueueJob([i]() {work(i % 4 + 1, i); });
 	}
 
+}
+
+template<class F, class ...Args>
+std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F f, Args ...args)
+{
+	if (stop_all) {
+		throw std::runtime_error("ThreadPool 사용 중지");
+	}
+
+	using return_type = typename std::result_of<F(Args...)>::type;
+
+	//job은 지역변수로 이 함수 리턴되면 파괴 -> shared_ptr에 담아줌(사용하는것 없을때 소멸됨 )
+	//std::packaged_task<return_type()> job(std::bind(f, args...));
+
+	auto job = std::make_shared<std::packaged_task<return_type()>>(std::bind(f, args...));
+	std::future<return_type> job_result_future = job->get_future();
+	{
+		std::lock_guard<std::mutex> lock(mu_jobq);
+		jobs.push([job]() {(*job)(); });
+
+	}
+
+	cv_jobq.notify_one();
+
+	return job_result_future;
 }
