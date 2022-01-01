@@ -145,12 +145,20 @@ void work(int t, int id) {
 	printf("%d end after %ds\n", id, t);
 }
 
+int plus(int p1, int p2)
+{
+	printf("%d plus %d \n", p1 , p2);
+	_sleep(p1*10);
+	return p1 + p2;
+}
 int main()
 {
 	Threadpool  pool(4);
 
 	for (int i = 0; i < 10; i++) {
-		pool.EnqueueJob([i]() {work(i % 4 + 1, i); });
+		//pool.EnqueueJob([i]() {work(i % 4 + 1, i); });
+ 		auto result = pool.EnqueueJob([i]() ->int{return plus(i % 4, i); });
+		printf("result = %d\n  ", result.get());
 	}
 
 }
@@ -161,7 +169,7 @@ std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F 
 	if (stop_all) {
 		throw std::runtime_error("ThreadPool 사용 중지");
 	}
-
+	 
 	using return_type = typename std::result_of<F(Args...)>::type;
 
 	//job은 지역변수로 이 함수 리턴되면 파괴 -> shared_ptr에 담아줌(사용하는것 없을때 소멸됨 )
@@ -178,5 +186,5 @@ std::future<typename std::result_of<F(Args...)>::type> Threadpool::EnqueueJob(F 
 
 	cv_jobq.notify_one();
 
-	return job_result_future;
+ 	return job_result_future;
 }
