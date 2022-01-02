@@ -24,6 +24,8 @@ int main() {
 	std::thread t(std::bind(plus, 3, 4, std::move(p)));
 
 
+	//f.wait() 할 필요없는 이유는 값이 아직 future에 없더라도 promise가 future에 전달할 때 까지 기다린 다음 리턴함으로
+	//get을 호출하면 future내에 있는 데이터가 이동됨 재호출 금지
 	printf("plus %d\n", f.get());
 	t.join();
 
