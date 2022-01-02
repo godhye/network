@@ -2,16 +2,33 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <mutex>
 
 using std::string;
 
-int plus(int a, int b, std::promise<int> &p)
+bool done = false;
+std::condition_variable cv;
+std::mutex mu;
+int nmessage;
+std::vector<std::thread> vectorthread;
+
+void work(int a)
 {
-	p.set_value(a + b);
-	return a + b;
+	{
+		std::lock_guard<std::mutex> lock(mu);
+		nmessage = a;
+
+		if (a == 2)
+			done = true;
+	}
+
+	cv.notify_one();
+
 }
 
+
 int main() {
+
 
 	//int값을 반환할 예정인 promise(생산자역할)
 	std::promise<int> p;
@@ -21,13 +38,25 @@ int main() {
 	//미래에 int값 데이터 돌려주겟다.
 	f = p.get_future();
 
-	std::thread t(std::bind(plus, 3, 4, std::move(p)));
+	vectorthread.reserve(3);
+	for (int i = 0; i < 3; i++)
+		vectorthread.emplace_back(std::bind(work, i));
+
+	while (1)
+	{
+		std::unique_lock<std::mutex> lock(mu);
+		cv.wait(lock, [] {return done; });
+
+		if (done)
+			return;
+
+		printf("work =  %d\n", nmessage);
+		lock.unlock();
+		for (int i = 0; i < 3; i++)
+			vectorthread[i].join();
+	}
 
 
-	//f.wait() 할 필요없는 이유는 값이 아직 future에 없더라도 promise가 future에 전달할 때 까지 기다린 다음 리턴함으로
-	//get을 호출하면 future내에 있는 데이터가 이동됨 재호출 금지
-	printf("plus %d\n", f.get());
-	t.join();
 
 	return 0;
 }
