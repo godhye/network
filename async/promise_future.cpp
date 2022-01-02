@@ -21,7 +21,7 @@ int main() {
 	//미래에 int값 데이터 돌려주겟다.
 	f = p.get_future();
 
-	std::thread t(plus, 3, 4, std::move(p));
+	std::thread t(std::bind(plus, 3, 4, std::move(p)));
 
 
 	printf("plus %d\n", f.get());
