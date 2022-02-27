@@ -84,13 +84,13 @@ int main()
 		//read/write
 		int strlen = 0;
 		size_t total = 0;
-		TCHAR buf[BUFSIZ] = { 0, };
+		char buf[BUFSIZ*2] = { 0, };
 		FILE *F;
 		F = fopen("test.mp4", "wb");
 		if (!F)
 			break;
 		//recv
-		while ((strlen = recv(hCnt, buf, BUFSIZ, 0)) != 0)
+		while ((strlen = recv(hCnt, buf, BUFSIZ*2, 0)) != 0)
 		{
 			if (strlen == -1)
 			{
@@ -99,12 +99,11 @@ int main()
 				break;
 			}
 			total += strlen;
-			printf("server :  total = %zd , strlen = %d  \n",   total, strlen);
-			fwrite(F, 1, strlen, F);
+			 fwrite((void*)F, 1, strlen, F);
 		}
 		fclose(F);
 		//close
-		printf("close  total = %zd \n", buf, total);
+		printf("close  total = %zd \n", total);
 		nresult = closesocket(hCnt);
 		
 	}
