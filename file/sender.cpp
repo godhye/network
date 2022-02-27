@@ -73,12 +73,17 @@ int main()
 
 			if (nresutl < BUFSIZ * 2)
 			{
-				nresult = send(sServ, (char*)buf, nresutl, 0);
+				 int setlen = send(sServ, (char*)buf, nresutl, 0);
+				printf("  client = total = %zd  , fread = %d setlen =%d \n", total,   nresutl, setlen);
 				break;
 			}
+
+			//send 할때 버퍼사이즈만큼 아니라 fread로 읽은 만큼 보내주기
 			else
-			nresult = send(sServ, (char*)buf, BUFSIZ * 2, 0);
-			
+			{
+				nresult = send(sServ, (char*)buf, BUFSIZ * 2, 0);
+				printf("  client = total = %zd  ,fread = %d \n", total,  nresutl);
+			}
 			 
 		}
 		printf("  client = total = %zd , lsize=%d \n", total, lsize);
