@@ -44,14 +44,14 @@ int main()
 		puts("connect error");
 		return -1;
 	}
-	TCHAR file[BUFSIZ] = { 0, };
-	TCHAR buf[BUFSIZ] = { 0, };
+	char file[BUFSIZ] = { 0, };
+	char buf[BUFSIZ*2] = { 0, };
 	int len = 0;
 	//send
 	printf("client ======================= \n");
 	size_t total = 0;
-	puts("file name : ");
-	scanf("%s", file);
+	puts("file name :test.mp4 ");
+	sprintf(file , "test.mp4" );
 
 	FILE *f = fopen(file, "rb");
 	if (!f)
@@ -68,14 +68,18 @@ int main()
 		while (1)
 		{
 			//fread
-			nresutl = fread((void*)buf, 1, BUFSIZ, f);
+			nresutl = fread((void*)buf, 1, BUFSIZ*2, f);
 			total += nresutl;
 
-			printf("  client = total = %zd , nresutl = %zd  \n", total, nresutl);
-			//버퍼만금 send
-			nresult = send(sServ, buf, strlen(buf), 0);
-			if (total >= lsize)
+			if (nresutl < BUFSIZ * 2)
+			{
+				nresult = send(sServ, (char*)buf, nresutl, 0);
 				break;
+			}
+			else
+			nresult = send(sServ, (char*)buf, BUFSIZ * 2, 0);
+			
+			 
 		}
 		printf("  client = total = %zd , lsize=%d \n", total, lsize);
 		//파일사이즈만큼 보냈으면 , SHUT_WR
