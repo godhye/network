@@ -3,7 +3,7 @@
 
 #include "stdafx.h"
 #pragma comment (lib , "ws2_32")
-
+#include "헤더.h"
 #include <winsock2.h>
 #include <stdio.h>
 #include <Windows.h>
@@ -36,65 +36,74 @@ int main()
 	sServaddr.sin_family = AF_INET;
 	sServaddr.sin_addr.s_addr = inet_addr(ADDR);
 	sServaddr.sin_port = USE_PORT;
-	 
+
 	//connect
 	nresult = connect(sServ, (SOCKADDR*)&sServaddr, sizeof(sServaddr));
-	if (nresult== SOCKET_ERROR)
+	if (nresult == SOCKET_ERROR)
 	{
 		puts("connect error");
 		return -1;
 	}
+	tDATAEXP *data = new tDATAEXP;
+	
 	char file[BUFSIZ] = { 0, };
-	char buf[BUFSIZ*2] = { 0, };
+	char buf[BUFSIZ * 2] = { 0, };
 	int len = 0;
 	//send
 	printf("client ======================= \n");
 	size_t total = 0;
+	 
+
 	puts("file name :test.mp4 ");
-	sprintf(file , "test.mp4" );
+	sprintf(file, "test.mp4");
 
 	FILE *f = fopen(file, "rb");
 	if (!f)
 		return -1;
 	int nresutl = 0;
- 
-		//파일사이즈 구하기
-		//파일 끝으로 이동
-		fseek(f, 0, SEEK_END);
-		//현재 위치 
-		size_t lsize = ftell(f);
-		//다시 첨으로 이동 
-		rewind(f);
-		while (1)
+
+	//파일사이즈 구하기
+	//파일 끝으로 이동
+	fseek(f, 0, SEEK_END);
+	//현재 위치 
+	size_t lsize = ftell(f);
+	//다시 첨으로 이동 
+	rewind(f);
+
+	data->nfilesize = lsize;
+	strcpy(data->szFilename, file);
+
+	send(sServ, (char*)data, sizeof(tDATAEXP) , 0);
+
+	while (1)
+	{
+		//fread
+		nresutl = fread((void*)buf, 1, BUFSIZ * 2, f);
+		total += nresutl;
+
+		if (nresutl < BUFSIZ * 2)
 		{
-			//fread
-			nresutl = fread((void*)buf, 1, BUFSIZ*2, f);
-			total += nresutl;
-
-			if (nresutl < BUFSIZ * 2)
-			{
-				 int setlen = send(sServ, (char*)buf, nresutl, 0);
-				printf("  client = total = %zd  , fread = %d setlen =%d \n", total,   nresutl, setlen);
-				break;
-			}
-
-			//send 할때 버퍼사이즈만큼 아니라 fread로 읽은 만큼 보내주기
-			else
-			{
-				nresult = send(sServ, (char*)buf, BUFSIZ * 2, 0);
-				printf("  client = total = %zd  ,fread = %d \n", total,  nresutl);
-			}
-			 
+			int setlen = send(sServ, (char*)buf, nresutl, 0);
+			printf("  client = total = %zd  , fread = %d setlen =%d \n", total, nresutl, setlen);
+			break;
 		}
-		printf("  client = total = %zd , lsize=%d \n", total, lsize);
-		//파일사이즈만큼 보냈으면 , SHUT_WR
-		shutdown(sServ, SD_SEND);
- 
+
+		//send 할때 버퍼사이즈만큼 아니라 fread로 읽은 만큼 보내주기
+		else
+		{
+			nresult = send(sServ, (char*)buf, BUFSIZ * 2, 0);
+			//printf("  client = total = %zd  ,fread = %d \n", total, nresutl);
+		}
+
+	}
+	printf("  client = total = %zd , lsize=%d \n", total, lsize);
+	//파일사이즈만큼 보냈으면 , SHUT_WR
+	shutdown(sServ, SD_SEND);
+	delete data;
 	//closesocket
- 
+
 	closesocket(sServ);
 	//wsa clean
 	WSACleanup();
-    return 0;
+	return 0;
 }
-
