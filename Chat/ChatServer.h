@@ -31,7 +31,7 @@ private:
 	int OpenRoom(int nSocket, char* szTitle, char* szPassword, int &nRoomNum);
 	int JoinRoom(int nSocket, int nRoomNum,char* szPassword );
 	int QuitRoom(int nRoomNum);
-	int SendResult(int nSocket, int result);
+	int SendResult(int nSocket, int nServicetype, int nDatasize, int nResult);
 	int CloseConnect(int nSocket);
 	int OpenConnect(int nSocket);
 	int Parsing(   char* buf , int recvdata, char Sep, int &nServCode, int &nDataSize, char** szData);
@@ -60,6 +60,7 @@ private:
 	std::map<int, tRoom> m_mapRoom;
 
 	int m_nChatRoom = 0;
-
+	char m_recvbuf[10000] = { 0, };
+	int m_nbufsize = 0;
 };
 

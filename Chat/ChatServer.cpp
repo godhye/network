@@ -82,12 +82,10 @@ int ChatServer::Work()
 				{
 
 
-					char buf[BUF_SIZE+1] = {0,};
-					int recvlen = recv(m_Read.fd_array[i], buf, BUF_SIZE, 0);
+					char buf[BUF_SIZE] = {0,};
+					int recvlen = recv(m_Read.fd_array[i], buf, PROTOCOL_HEADER_SIZE, 0);
 
-					//buf 파싱해서 어떤 데이터인지 확인 
 					
-
 					if (recvlen < 0)
 					{
 						printf("recv 오류 clnt = %d serv = %d\n", m_Read.fd_array[i], m_ServSock);
@@ -98,17 +96,29 @@ int ChatServer::Work()
 					{
 						CloseConnect(m_Read.fd_array[i]);	
 					}
-
 					else
 					{
+						//buf 파싱해서 어떤 데이터인지 확인 
+
+
 						int nServiceCode;
 						int nDataSize;
 						void *szData = NULL;
-						buf[recvlen] = '\0';
+				 
 						printf("recv msg = %s \n", buf);
 						Parsing(buf , recvlen , '&' , nServiceCode , nDataSize, (char**)&szData);
 						 
-						RecvHandler(m_Read.fd_array[i], nServiceCode, nDataSize, (char*)szData);
+						char *databuf = new char[nDataSize];
+						
+						int nlentotal = recv(m_Read.fd_array[i], databuf, nDataSize, 0);
+						
+						while (nlentotal <= nDataSize)
+						{
+							 
+							nlentotal += recv(m_Read.fd_array[i], databuf+ nlentotal, nDataSize- nlentotal, 0);
+						}
+
+						RecvHandler(m_Read.fd_array[i], nServiceCode, nDataSize,  databuf);
 						
 						delete szData;
 						//같은 방에 있는 애들한테 braodcast
@@ -185,7 +195,7 @@ int ChatServer::JoinRoom(int nSocket, int nRoomNum, char * szPassword)
 
 	if (it == m_mapRoom.end())
 	{
-		printf("ERROR JoinRoom \n");
+		printf("ERROR JoinRoom 1\n");
 		return -1;
 	}
 
@@ -193,7 +203,7 @@ int ChatServer::JoinRoom(int nSocket, int nRoomNum, char * szPassword)
 	{
 		if (strcmp(it->second.szPassword, szPassword) != 0)
 		{
-			printf("ERROR JoinRoom szPassword \n");
+			printf("ERROR JoinRoom szPassword 2\n");
 			return -2;
 		}
 		else
@@ -219,13 +229,13 @@ int ChatServer::QuitRoom(int nRoomNum)
 	return 0;
 }
 
-int ChatServer::SendResult(int nSocket, int result)
+int ChatServer::SendResult(int nSocket, int nServicetype , int nDatasize , int nResult)
 {
-	char buf[100];
-	sprintf(buf, "%d", result);
+	TCHAR buf[BUF_SIZE] = { 0, };
+	TCHAR Sendbuf[BUF_SIZE] = { 0, };
 
-	send(nSocket, buf , strlen(buf) ,0);
-
+	sprintf(Sendbuf, "%04d&%06d&%04d", nServicetype, 12+sizeof(int),nResult);
+	int len = send(nSocket, Sendbuf, 12 + sizeof(int), 0);
 	return 0;
 }
 
@@ -265,7 +275,7 @@ int ChatServer::OpenConnect(int nSocket)
 	return 0;
 }
 
-int ChatServer::Parsing(char * buf, int recvdata, char Sep, int &nServCode, int &nDataSize , char** szData)
+int ChatServer::Parsing(char * buf, int nrecvdata, char Sep, int &nServCode, int &nDataSize , char** szData)
 {
 	if (!buf)
 		return -1;
@@ -278,36 +288,48 @@ int ChatServer::Parsing(char * buf, int recvdata, char Sep, int &nServCode, int 
 	
 	char *szRecvData;
 
-	int curoffset = 0;;
+	int curoffset = 0;
  
-
-
-	while (curoffset <recvdata)
+	if (nrecvdata < PROTOCOL_HEADER_SIZE)
 	{
-	 
+		// 데이터 처리할 수 있는 최소 단위 만족 못하므로 parsing 안함
+		return 0;
+	}
+
+	if (!(buf && 0x47))
+	{
+		//헤더상에 싱크파트가 없음 
+		return -1;
+		
+	}
+	curoffset++;
+	buf++;
+
+	while (curoffset <nrecvdata)
+	{
+		 
 		memcpy(szServiceCode, buf, sizeof(char) *4);
 		nServCode = atoi(szServiceCode);
 		buf += PROTOCOL_SERVIEC_TYPE + PROTOCOL_SEPARATOR;
 		curoffset += PROTOCOL_SERVIEC_TYPE + PROTOCOL_SEPARATOR;
-		//buf += sizeof(char); // 구분자 
+	 
 
 		memcpy(szDataSize, buf, sizeof(char) * 6);
 		nDataSize = atoi(szDataSize);
 		buf += PROTOCOL_MSG_SIZE + PROTOCOL_SEPARATOR;
 		curoffset += PROTOCOL_MSG_SIZE + PROTOCOL_SEPARATOR;
-		//buf += sizeof(char); // 구분자 
-
-		 *szData = new char[sizeof(char)*nDataSize + 1];
-		 auto ntest = sizeof(*szData);
-		 memset(*szData, 0, sizeof(char)*nDataSize + 1);
-
-		memcpy(*szData, buf, nDataSize);
-		
-		buf += nDataSize;
-		curoffset += nDataSize;
+	  
 
 	}
-	 
+	/**szData = new char[sizeof(char)*nDataSize + 1];
+	auto ntest = sizeof(*szData);
+	memset(*szData, 0, sizeof(char)*nDataSize + 1);
+
+	memcpy(*szData, buf, nDataSize);
+
+	buf += nDataSize;
+	curoffset += nDataSize;*/
+	
 	return 0;
 }
 
@@ -318,21 +340,29 @@ int ChatServer::RecvHandler(int nSocket,int nServCode, int nDataSize, char * szD
 	{
 	case PROTOCOL_OPEN:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
-		RecvProtocolOPEN(nSocket, szData);
-		
+		if (RecvProtocolOPEN(nSocket, szData) == -1)
+			printf("ERROR");
+		else
+			SendResult(nSocket, nServCode, sizeof(int), 1);
+		break;
+
 	case PROTOCOL_JOIN:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
 		RecvProtocolJOIN(nSocket, szData);
-		return 1;
+		break;
 	case PROTOCOL_MSG:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
 		RecvProtocolMSG(nSocket, szData);
+		break;
 	case PROTOCOL_UPDATE:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
+		break;
 	case PROTOCOL_FILE:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
+		break;
 	case PROTOCOL_QUIT:
 		printf("%d %d %s\n", nServCode, nDataSize, szData);
+		break;
 	default:
 		break;
 	}
@@ -363,9 +393,9 @@ int ChatServer::RecvProtocolJOIN(int nSocket, char * szData)
 
 	sDATAJOIN *sData = (sDATAJOIN*)szData;
 	
-	if (JoinRoom(nSocket, sData->nJoinRoom, sData->szPassword ) < 0);
+	if (JoinRoom(nSocket, sData->nJoinRoom, sData->szPassword ) < 0)
 	{
-		printf("ERROR JoinRoom \n");
+		printf("ERROR JoinRoom 3\n");
 		return -1;
 	}
 	return 0;
@@ -373,6 +403,32 @@ int ChatServer::RecvProtocolJOIN(int nSocket, char * szData)
 
 int ChatServer::RecvProtocolMSG(int nSocket, char * szData)
 {
+	int nChatRoom;
+	int nresult = GetJoinedChatRoomNum(nSocket , nChatRoom);
+
+	if (nChatRoom > 0)
+	{
+		auto it = m_mapRoom.find(nChatRoom);
+		if (it == m_mapRoom.end())
+		{
+			printf("ERROR RecvProtocolMSG 3\n");
+			return -1;
+		}
+		else
+		{
+			//braodcast 
+			for (auto itset = it->second.setUsers.begin(); itset != it->second.setUsers.end(); itset++)
+			{
+				send(*itset, szData, strlen(szData), 0);
+			}
+
+		}
+
+
+	}
+
+	
+
 	return 0;
 }
 
