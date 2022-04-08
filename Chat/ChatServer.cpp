@@ -75,54 +75,14 @@ int ChatServer::Work()
 				if (m_Read.fd_array[i] == m_ServSock)
 				{
 					printf("새로운 연결 요청 server  clnt = %d  servsock = %d \n", m_Read.fd_array[i], m_ServSock);
-					OpenConnect(m_Read.fd_array[i]);
+					SetNewUser(m_Read.fd_array[i]);
 				}
 
 				else //read message
 				{
+					RecvMsg(i);
 
-
-					char buf[BUF_SIZE] = {0,};
-					int recvlen = recv(m_Read.fd_array[i], buf, PROTOCOL_HEADER_SIZE, 0);
-
-					
-					if (recvlen < 0)
-					{
-						printf("recv 오류 clnt = %d serv = %d\n", m_Read.fd_array[i], m_ServSock);
-						CloseConnect(m_Read.fd_array[i]);
-					}
-
-					else if (recvlen == 0)
-					{
-						CloseConnect(m_Read.fd_array[i]);	
-					}
-					else
-					{
-						//buf 파싱해서 어떤 데이터인지 확인 
-
-
-						int nServiceCode;
-						int nDataSize;
-						void *szData = NULL;
-				 
-						printf("recv msg = %s \n", buf);
-						Parsing(buf , recvlen , '&' , nServiceCode , nDataSize, (char**)&szData);
-						 
-						char *databuf = new char[nDataSize];
-						
-						int nlentotal = recv(m_Read.fd_array[i], databuf, nDataSize, 0);
-						
-						while (nlentotal <= nDataSize)
-						{
-							 
-							nlentotal += recv(m_Read.fd_array[i], databuf+ nlentotal, nDataSize- nlentotal, 0);
-						}
-
-						RecvHandler(m_Read.fd_array[i], nServiceCode, nDataSize,  databuf);
-						
-						delete szData;
-						//같은 방에 있는 애들한테 braodcast
-					}
+				
 				}
 			}
 		}
@@ -137,6 +97,96 @@ int ChatServer::Clean()
 	closesocket(m_ServSock);
 	//wsa 정리
 	WSACleanup();
+	return 0;
+}
+
+int ChatServer::RecvMsg(int nindex)
+{
+	char buf[BUF_SIZE] = { 0, };
+	//헤더 먼저 받기 
+	int recvlen = recv(m_Read.fd_array[nindex], buf, PROTOCOL_HEADER_SIZE, 0);
+	 
+	if (recvlen < 0)
+	{
+		if (errno == EAGAIN)
+		{
+			printf("----- read EAGAIN\n");
+		}
+
+		printf("recv 오류 clnt = %d serv = %d\n", m_Read.fd_array[nindex], m_ServSock);
+		CloseConnect(m_Read.fd_array[nindex]);
+	}
+	else if (recvlen == 0)
+	{
+		CloseConnect(m_Read.fd_array[nindex]);
+	}
+	else
+	{
+		// 데이터 처리할 수 있는 최소 단위 만족 못하므로 parsing 안함
+		if (recvlen < PROTOCOL_HEADER_SIZE)
+			return -1;
+
+		//buf 파싱해서 어떤 데이터인지 확인 
+		int nServiceCode;
+		int nDataSize;
+		void *szData = NULL;
+
+		printf("recv msg = %s \n", buf);
+		Parsing(buf, recvlen, '&', nServiceCode, nDataSize, (char**)&szData);
+
+		char *databuf = new char[nDataSize];
+
+		int nResult = RecvData(nindex, nDataSize, databuf);
+	
+		if (nResult <0)
+		{
+			//유저목록에 있는 놈이면 삭제 처리 해주기 
+			printf("비정상 패킷 버림 \n");
+			delete databuf;
+			delete szData;
+			return -1;
+
+		}
+		//처리부 
+		RecvHandler(m_Read.fd_array[nindex], nServiceCode, nDataSize, databuf);
+
+		delete databuf;
+		delete szData;
+	 
+	}
+
+	return 0;
+}
+#include <errno.h>
+int ChatServer::RecvData(int nindex, int nDataSize, char * databuf)
+{
+	int nlentotal = 0;
+	int nTry = 0;
+
+		while (nlentotal < nDataSize )
+		{
+
+			if (nTry == m_nMaxRecv)
+				return -2;
+
+			int nrecv = 0;
+			nrecv= recv(m_Read.fd_array[nindex], databuf + nlentotal, nDataSize - nlentotal, 0);
+			nTry++;
+			if (nrecv <= 0)
+			{
+				if (WSAGetLastError() == WSAEWOULDBLOCK)
+				{
+					printf("----- read EAGAIN \n");
+				}
+
+				else
+					return -1;
+			}
+			else
+				nlentotal += nrecv;
+			 
+		}
+	  
 	return 0;
 }
 
@@ -257,14 +307,18 @@ int ChatServer::CloseConnect(int nSocket)
 	printf("연결종료  clnt = %d m_ServSock =%d \n", nSocket, m_ServSock);
 	return 0;
 }
-
-int ChatServer::OpenConnect(int nSocket)
+ 
+int ChatServer::SetNewUser(int nSocket)
 {
 	int adSz = sizeof(m_Clntaddr);
 	m_ClntSock = accept(m_ServSock, (SOCKADDR*)&m_Clntaddr, &adSz);
 	//새로 연결된 클라이언트소켓 등록
 	FD_SET(m_ClntSock, &m_Read);
 
+	//클라이언트 소켓은 논블로킹 소켓 설정
+
+	ULONG iMode = 1;
+	ioctlsocket(m_ClntSock, FIONBIO, &iMode);
 	//새로운 유저 생성
 	tUser user;// = new tUser;
 	user.h_socket = m_ClntSock;
@@ -281,26 +335,19 @@ int ChatServer::Parsing(char * buf, int nrecvdata, char Sep, int &nServCode, int
 		return -1;
 
 
-	//서비스코드&데이터사이즈&데이터  
-	//0001&000010&0123456789
+	//싱크서비스코드&데이터사이즈&데이터  
+	//G&0001&000010&0123456789
 	char szServiceCode[100] = { 0, };
 	char szDataSize[100] = { 0, };
 	
 	char *szRecvData;
 
 	int curoffset = 0;
- 
-	if (nrecvdata < PROTOCOL_HEADER_SIZE)
-	{
-		// 데이터 처리할 수 있는 최소 단위 만족 못하므로 parsing 안함
-		return 0;
-	}
-
+   
 	if (!(buf && 0x47))
 	{
 		//헤더상에 싱크파트가 없음 
 		return -1;
-		
 	}
 	curoffset++;
 	buf++;
@@ -310,25 +357,21 @@ int ChatServer::Parsing(char * buf, int nrecvdata, char Sep, int &nServCode, int
 		 
 		memcpy(szServiceCode, buf, sizeof(char) *4);
 		nServCode = atoi(szServiceCode);
+		//int값 아닐때 예외처리 
+		
 		buf += PROTOCOL_SERVIEC_TYPE + PROTOCOL_SEPARATOR;
 		curoffset += PROTOCOL_SERVIEC_TYPE + PROTOCOL_SEPARATOR;
 	 
 
 		memcpy(szDataSize, buf, sizeof(char) * 6);
 		nDataSize = atoi(szDataSize);
+		//int값 아닐때 예외처리 
+
 		buf += PROTOCOL_MSG_SIZE + PROTOCOL_SEPARATOR;
 		curoffset += PROTOCOL_MSG_SIZE + PROTOCOL_SEPARATOR;
 	  
 
 	}
-	/**szData = new char[sizeof(char)*nDataSize + 1];
-	auto ntest = sizeof(*szData);
-	memset(*szData, 0, sizeof(char)*nDataSize + 1);
-
-	memcpy(*szData, buf, nDataSize);
-
-	buf += nDataSize;
-	curoffset += nDataSize;*/
 	
 	return 0;
 }

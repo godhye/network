@@ -26,7 +26,9 @@ public:
 private:
 
 
-	int RecvMsg(); //받은 데이터 타입에 따른 분기 처리 
+	int RecvMsg(int nindex); //받은 데이터 타입에 따른 분기 처리 
+	int RecvData(int nIndex , int nDatasize , char* buf ); //받은 데이터 타입에 따른 분기 처리 
+
 	int SendMsg(int nSocket,int nChatRoom, int ServCode , int DataSize , char* szData , bool bDeleteData = true); //데이터 전송 
 	int OpenRoom(int nSocket, char* szTitle, char* szPassword, int &nRoomNum);
 	int JoinRoom(int nSocket, int nRoomNum,char* szPassword );
@@ -62,5 +64,7 @@ private:
 	int m_nChatRoom = 0;
 	char m_recvbuf[10000] = { 0, };
 	int m_nbufsize = 0;
+
+	int m_nMaxRecv = 4;
 };
 
