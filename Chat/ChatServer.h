@@ -4,19 +4,20 @@
 #include <stdio.h>
 #include <time.h>
 #include <string>
+#include "Network.h"
 #include <Windows.h>
 #include <vector>
 #include <map>
 #include <set>
 
-class ChatServer
+class ChatServer : public  Network
 {
 public:
 	ChatServer();
 	~ChatServer();
 
-	int Init(int nPort);
-	int Work();
+	//int Init(int nPort);
+	//int Work();
 	int Clean();
 
 	
@@ -26,18 +27,17 @@ public:
 private:
 
 
-	int RecvMsg(int nindex); //받은 데이터 타입에 따른 분기 처리 
-	int RecvData(int nIndex , int nDatasize , char* buf ); //받은 데이터 타입에 따른 분기 처리 
-
-	int SendMsg(int nSocket,int nChatRoom, int ServCode , int DataSize , char* szData , bool bDeleteData = true); //데이터 전송 
-	int OpenRoom(int nSocket, char* szTitle, char* szPassword, int &nRoomNum);
+	 int OpenRoom(int nSocket, char* szTitle, char* szPassword, int &nRoomNum);
 	int JoinRoom(int nSocket, int nRoomNum,char* szPassword );
 	int QuitRoom(int nRoomNum);
 	int SendResult(int nSocket, int nServicetype, int nDatasize, int nResult);
 	int CloseConnect(int nSocket);
-	int OpenConnect(int nSocket);
-	int Parsing(   char* buf , int recvdata, char Sep, int &nServCode, int &nDataSize, char** szData);
-	int RecvHandler(int nSocket, int nServCode, int nDataSize, char* szData);
+	int SetNewUser(int nSocket);
+
+	 int OnConnect(int nSocket);
+	int OnDisconnect(int nSocket);
+
+	 int RecvHandler(int nSocket, int nServCode, int nDataSize, char* szData);
 
 
 	int RecvProtocolOPEN(int nSocket, char* szData);
@@ -49,12 +49,7 @@ private:
 
 	int GetJoinedChatRoomNum(int nSocket , int &nRoomNum);
 
-	//servsock , addr
-	SOCKET m_ServSock, m_CpyServ, m_ClntSock;
-	SOCKADDR_IN m_Servaddr, m_Clntaddr;
-
-	//FDSET  소켓 보관
-	fd_set m_Read, m_Cpyread;
+ 
 
 	//유저리스트 세션키 / 유저정보
 	std::map<unsigned int , tUser> m_mapUser; 
@@ -62,9 +57,6 @@ private:
 	std::map<int, tRoom> m_mapRoom;
 
 	int m_nChatRoom = 0;
-	char m_recvbuf[10000] = { 0, };
-	int m_nbufsize = 0;
 
-	int m_nMaxRecv = 4;
 };
 
