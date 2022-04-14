@@ -33,12 +33,14 @@ int main()
 		return 0;
 	}
 	
-	chatserver->Work();
+ 
 
 	auto sig = CreateEvent(NULL, true, false, NULL);
 
 	
 	chatserver->Work();
+	chatserver->SendWork();
+
 	WaitForSingleObject(sig, INFINITE);
 	//메모리해제 	
 	delete sig;

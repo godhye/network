@@ -98,6 +98,41 @@ int Network::Work()
 	return 0;
 }
 
+int Network::SendWork()
+{
+	while (1)
+	{
+		if (m_SendQ.empty())
+			continue;
+		else
+		{
+			mu.lock();
+			auto it = m_SendQ.begin();
+			mu.unlock();
+
+			if (!it->szbuf)
+			{
+				printf("SendWork szbuf NULL\n");
+			}
+			else
+			{
+				int nsend = send(it->nSock, it->szbuf, it->nsize, 0);
+				if (nsend < 0)
+				{
+					printf("SendWork ????????\n");
+				}
+				printf("SendWork Send Msg socket %d buf %s size %d \n", it->nSock, it->szbuf, it->nsize);
+				delete it->szbuf;
+			}
+			mu.lock();
+			m_SendQ.erase(it);
+			mu.unlock();
+		}
+
+	}
+	return 0;
+}
+
 int Network::RecvMsg(int nindex)
 {
 	char buf[BUF_SIZE] = { 0, };
@@ -175,11 +210,13 @@ int Network::RecvData(int nindex, int nDataSize, char * databuf)
 
 		int nrecv = 0;
 		nrecv = recv(m_Read.fd_array[nindex], databuf + nlentotal, nDataSize - nlentotal, 0);
-		nTry++;
+		
 		if (nrecv <= 0)
 		{
 			if (WSAGetLastError() == WSAEWOULDBLOCK)
 			{
+				//데이터 안온거 기다려줌 
+				nTry++;
 				printf("----- read EAGAIN \n");
 			}
 
@@ -193,19 +230,29 @@ int Network::RecvData(int nindex, int nDataSize, char * databuf)
 	return 0;
 }
 
-int Network::SendMsg(int nSocket, int nChatRoom, int ServCode, int DataSize, char * szData, bool bDeleteData)
+int Network::SendMsg(int nSocket, int ServCode, int DataSize, char * szData, bool bDeleteData)
 {
 
-	int nTotMsgsize = PROTOCOL_SEPARATOR * 2 + PROTOCOL_SERVIEC_TYPE + PROTOCOL_MSG_SIZE + DataSize + 1;
+	if (!szData)
+		return -1;
 
-	char *szSendData = new char[nTotMsgsize];
+	int nTotMsgsize = PROTOCOL_HEADER_SIZE + DataSize;
+	tMSG tMsg;
+	char *szSendData = new char[nTotMsgsize+1];
 	memset(szSendData, 0, nTotMsgsize);
 
 	sprintf(szSendData, "%04d&%06d&%s", ServCode, DataSize, szData);
 
-	send(nSocket, szSendData, strlen(szSendData), NULL);
+	tMsg.nSock = nSocket;
+	tMsg.nsize = nTotMsgsize;
+	tMsg.szbuf = szSendData;
+	
+	mu.lock();
+	m_SendQ.push_back(tMsg);
+	mu.unlock();
 
-	delete szSendData;
+	//큐에서 보내고 나서 szSendData 삭제 
+	//delete szSendData;
 	return 0;
 }
 
@@ -217,23 +264,26 @@ int Network::Parsing(char * buf, int nrecvdata, char Sep, int & nServCode, int &
 
 	//싱크서비스코드&데이터사이즈&데이터  
 	//G&0001&000010&0123456789
+
+	//서비스코드&데이터사이즈&데이터  
+	//0001&000010&0123456789
 	char szServiceCode[100] = { 0, };
 	char szDataSize[100] = { 0, };
 	char *szRecvData;
 
 	int curoffset = 0;
-	if (!(buf && 0x47))
-	{
-		//헤더상에 싱크파트가 없음 
-		return -1;
-	}
-	curoffset++;
-	buf++;
+	//if (!(buf && 0x47))
+	//{
+	//	//헤더상에 싱크파트가 없음 
+	//	return -1;
+	//}
+	//curoffset++;
+	//buf++;
 
 	while (curoffset <nrecvdata)
 	{
 
-		memcpy(szServiceCode, buf, sizeof(char) * 4);
+		memcpy(szServiceCode, buf, PROTOCOL_SERVIEC_TYPE);
 		nServCode = atoi(szServiceCode);
 		//int값 아닐때 예외처리 
 
@@ -241,7 +291,7 @@ int Network::Parsing(char * buf, int nrecvdata, char Sep, int & nServCode, int &
 		curoffset += PROTOCOL_SERVIEC_TYPE + PROTOCOL_SEPARATOR;
 
 
-		memcpy(szDataSize, buf, sizeof(char) * 6);
+		memcpy(szDataSize, buf, PROTOCOL_MSG_SIZE);
 		nDataSize = atoi(szDataSize);
 		//int값 아닐때 예외처리 
 

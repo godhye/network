@@ -3,6 +3,17 @@
 #include <Windows.h>
 #include "헤더.h"
 #include <errno.h>
+#include <vector>
+#include <mutex>
+typedef struct sMSG
+{
+	unsigned int nSock;
+	char* szbuf;
+	size_t nsize;
+
+}tMSG;
+
+typedef std::vector<tMSG> MSGQ;
 
 class Network
 {
@@ -13,10 +24,11 @@ public:
 
 	int Init(int nPort);
 	int Work();
+	int SendWork();
 
 	int RecvMsg(int nindex); //받은 데이터 타입에 따른 분기 처리 
 	int RecvData(int nIndex, int nDatasize, char* buf); //받은 데이터 타입에 따른 분기 처리 
-	int SendMsg(int nSocket, int nChatRoom, int ServCode, int DataSize, char* szData, bool bDeleteData = true); //데이터 전송 
+	int SendMsg(int nSocket,  int ServCode, int DataSize, char* szData, bool bDeleteData = true); //데이터 전송 
 
 	int Parsing(char * buf, int nrecvdata, char Sep, int &nServCode, int &nDataSize);
 	virtual int OnConnect(int nSocket)=0;
@@ -32,7 +44,10 @@ public:
 	int m_nbufsize = 0;
 
 	int m_nMaxRecv = 4;
+	
 	//메세지 큐 
+	std::vector<tMSG> m_SendQ;
+	std::mutex mu;
 
 };
 

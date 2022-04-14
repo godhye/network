@@ -160,7 +160,7 @@ int ChatServer::OpenRoom(int nSocket, char * szTitle, char * szPassword, int & n
 	
 	m_mapRoom.insert(std::pair<int , tRoom>(nRoomNum, newRoom));
 	m_nChatRoom++;
-	printf("OpenRoom %d ", newRoom.nRoomNum);
+	printf("OpenRoom %d \n", newRoom.nRoomNum);
 
 	return 0;
 }
@@ -208,11 +208,11 @@ int ChatServer::QuitRoom(int nRoomNum)
 
 int ChatServer::SendResult(int nSocket, int nServicetype , int nDatasize , int nResult)
 {
-	TCHAR buf[BUF_SIZE] = { 0, };
-	TCHAR Sendbuf[BUF_SIZE] = { 0, };
 
-	sprintf(Sendbuf, "%04d&%06d&%04d", nServicetype, 12+sizeof(int),nResult);
-	int len = send(nSocket, Sendbuf, 12 + sizeof(int), 0);
+	TCHAR* Sendbuf = new TCHAR[PROTOCOL_RESPONSEDATA_SIZE];
+
+	sprintf(Sendbuf, "%04d", nResult);
+	int len = SendMsg(nSocket, nServicetype , PROTOCOL_RESPONSEDATA_SIZE, Sendbuf, 1);
 	return 0;
 }
 
@@ -365,7 +365,8 @@ int ChatServer::RecvProtocolMSG(int nSocket, char * szData)
 			//braodcast 
 			for (auto itset = it->second.setUsers.begin(); itset != it->second.setUsers.end(); itset++)
 			{
-				send(*itset, szData, strlen(szData), 0);
+				SendMsg(*itset, PROTOCOL_MSG,  strlen(szData), szData, 1);
+				  
 			}
 
 		}
