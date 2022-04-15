@@ -41,7 +41,14 @@ int Network::Init(int nPort)
 	return 0;
 }
 
-int Network::Work()
+int Network::Run()
+{
+	RecvWork();
+	SendWork();
+	return 0;
+}
+
+int Network::RecvWork()
 {
 	std::thread t1 ([=]() {
 		TIMEVAL timeout;
@@ -100,36 +107,40 @@ int Network::Work()
 
 int Network::SendWork()
 {
-	while (1)
-	{
-		if (m_SendQ.empty())
-			continue;
-		else
+	std::thread t1([=] {
+		while (1)
 		{
-			mu.lock();
-			auto it = m_SendQ.begin();
-			mu.unlock();
-
-			if (!it->szbuf)
-			{
-				printf("SendWork szbuf NULL\n");
-			}
+			if (m_SendQ.empty())
+				continue;
 			else
 			{
-				int nsend = send(it->nSock, it->szbuf, it->nsize, 0);
-				if (nsend < 0)
-				{
-					printf("SendWork ????????\n");
-				}
-				printf("SendWork Send Msg socket %d buf %s size %d \n", it->nSock, it->szbuf, it->nsize);
-				delete it->szbuf;
-			}
-			mu.lock();
-			m_SendQ.erase(it);
-			mu.unlock();
-		}
+				mu.lock();
+				auto it = m_SendQ.begin();
+				mu.unlock();
 
-	}
+				if (!it->szbuf)
+				{
+					printf("SendWork szbuf NULL\n");
+				}
+				else
+				{
+					int nsend = send(it->nSock, it->szbuf, it->nsize, 0);
+					if (nsend < 0)
+					{
+						printf("SendWork ????????\n");
+					}
+					printf("SendWork Send Msg socket %d buf %s size %d \n", it->nSock, it->szbuf, it->nsize);
+					delete it->szbuf;
+				}
+				mu.lock();
+				m_SendQ.erase(it);
+				mu.unlock();
+			}
+
+		}
+	});
+	t1.detach();
+
 	return 0;
 }
 
@@ -238,10 +249,14 @@ int Network::SendMsg(int nSocket, int ServCode, int DataSize, char * szData, boo
 
 	int nTotMsgsize = PROTOCOL_HEADER_SIZE + DataSize;
 	tMSG tMsg;
-	char *szSendData = new char[nTotMsgsize+1];
+	char *szSendData = new char[nTotMsgsize];
 	memset(szSendData, 0, nTotMsgsize);
 
-	sprintf(szSendData, "%04d&%06d&%s", ServCode, DataSize, szData);
+	//sprintf 하려면 문자열 종료 문자 들어가서 +1 해줘야한다.
+	//sprintf(szSendData, "%04d&%06d&%s", ServCode, DataSize , szData);
+
+	sprintf(szSendData, "%04d&%06d&", ServCode, DataSize);
+	memcpy(szSendData + PROTOCOL_HEADER_SIZE, szData, DataSize);
 
 	tMsg.nSock = nSocket;
 	tMsg.nsize = nTotMsgsize;

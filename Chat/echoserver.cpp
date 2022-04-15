@@ -24,6 +24,7 @@ int main()
 	InitWinService();
 	//conf(server ip , port  / data folder / keepalive 시간 ) 읽기
 	int nPort = USE_PORT;
+	auto sig = CreateEvent(NULL, true, false, NULL);
 
 	//ChatServer create 
 	ChatServer *chatserver = new ChatServer();
@@ -32,14 +33,8 @@ int main()
 		printf("Init ERROR ");
 		return 0;
 	}
-	
- 
-
-	auto sig = CreateEvent(NULL, true, false, NULL);
-
-	
-	chatserver->Work();
-	chatserver->SendWork();
+	 
+	chatserver->Run();
 
 	WaitForSingleObject(sig, INFINITE);
 	//메모리해제 	

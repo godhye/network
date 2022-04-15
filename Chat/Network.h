@@ -23,7 +23,8 @@ public:
 
 
 	int Init(int nPort);
-	int Work();
+	int Run();
+	int RecvWork();
 	int SendWork();
 
 	int RecvMsg(int nindex); //받은 데이터 타입에 따른 분기 처리 
