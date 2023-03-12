@@ -1,9 +1,7 @@
 #include "Netengine.h"
-
-
+ 
 unsigned WINAPI ThreadMain(void*  pPara);
-
-
+ 
 enum IOCPERROR
 {
 
@@ -24,22 +22,18 @@ Netengine::~Netengine()
 }
 
 int Netengine::InitNet()
-{
-
-
-	
+{ 	
 	int nclnt = 0;
 	int nerror = 0;
 	if (WSAStartup(MAKEWORD(2, 2), &m_wsaData) != 0)
 		printf("WSAStartup() error!");
-
-
+	 
 	m_handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
 	if (!m_handle)
 		return -1;
 	 
 	printf("m_handle! %d\n" , m_handle);
-	_beginthreadex(NULL, 0, ThreadMain, m_handle, 0, NULL);
+	_beginthreadex(NULL, 0, ThreadMain, this, 0, NULL);
 
 	return 0;
 }
@@ -64,9 +58,9 @@ int Netengine::MakeClientSocket(int nServerType, char * addr, int port)
 
 int Netengine::Run()
 {
-	//Å¬¶ó Á¢¼Ó
-	//¼­¹ö Á¢¼Ó 
+	//í´ë¼ ì ‘ì†
 
+	//IOCP ì„œë²„ ì ‘ì† 
 	StartServer();
 
 	return 0;
@@ -75,7 +69,7 @@ int Netengine::Run()
 int Netengine::StartServer()
 {
 	int nError;
-	//socket »ı¼º
+	//socket ìƒì„±
 	SOCKET hListenSocket = m_pServSock->m_hSocket.hSock;
 	hListenSocket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
 	if (hListenSocket == INVALID_SOCKET) {
@@ -84,7 +78,6 @@ int Netengine::StartServer()
 	}
 
 	//bind
-
 	SOCKADDR_IN servAdr;
 	memset(&servAdr, 0, sizeof(servAdr));
 	servAdr.sin_family = AF_INET;
@@ -93,7 +86,6 @@ int Netengine::StartServer()
 
 	//Bind()
 	if (bind(hListenSocket, (SOCKADDR*)&servAdr, sizeof(servAdr)) == SOCKET_ERROR) {
-
 		nError = WSAGetLastError();
 		return IOCP_ERR;
 	}
@@ -103,11 +95,11 @@ int Netengine::StartServer()
 		return IOCP_ERR;
 	}
 
+	int clnt = 0;
 	while (1)
 	{
 		SOCKET hClntSock;
-		SOCKADDR_IN clntAdr;
-		LPPER_HANDLE_DATA sHandle;
+		SOCKADDR_IN clntAdr; 
 		LPPER_IO_DATA ioinfo;
 		 int addrLen = sizeof(clntAdr);
 
@@ -115,31 +107,46 @@ int Netengine::StartServer()
 		if (hClntSock == INVALID_SOCKET)
 			continue;
 
-		printf("NEW CLIENT %d \n", hClntSock);
-
-		sHandle = (LPPER_HANDLE_DATA) new PER_HANDLE_DATA;
-		sHandle->hSock = hClntSock;
-		memcpy(&sHandle->sockAdr, &clntAdr, sizeof(clntAdr));
 		
-		//¸¸µé¾îÁø ÇÚµé¿¡ ¼ÒÄÏ µî·Ï 
-		auto result = CreateIoCompletionPort((HANDLE)hClntSock, m_handle, (DWORD_PTR)hClntSock, 1);
-		if (result == NULL) {
+		//printf("NEW CLIENT %d \n", hClntSock);
 		
-			printf("%d\n", GetLastError());
-		}
-		printf("handle %d\n", result);
-
+		
 		ioinfo = (LPPER_IO_DATA) new PER_IO_DATA;
-		memset(&ioinfo->overlapped, 0, sizeof(OVERLAPPED));
-		memset(ioinfo->buffer, 0, BUF_SIZE);
-		ioinfo->wsaBuf.buf = ioinfo->buffer;
-		ioinfo->wsaBuf.len = BUF_SIZE;
-		ioinfo->rwMode = READ;
+		memset(&ioinfo->overlappedrecv, 0, sizeof(OVERLAPPED));
+		memset(ioinfo->Recvbuffer, 0, BUF_SIZE);
+		ioinfo->wsaRecvBuf.buf = ioinfo->Recvbuffer;
+		ioinfo->wsaRecvBuf.len = BUF_SIZE;
 
+		memset(&ioinfo->overlappedsend, 0, sizeof(OVERLAPPED));
+		memset(ioinfo->Sendbuffer, 0, BUF_SIZE);
+		ioinfo->wsaSendBuf.buf = ioinfo->Sendbuffer;
+		ioinfo->wsaSendBuf.len = BUF_SIZE;
+
+		ioinfo->rwMode = READ;
+		
+
+		int isess = GetIndex();
+		printf("new client %d\n", isess);
+		if (isess >=0) {
+			m_pCliSocks[isess] = new ClientSocket;
+
+			m_pCliSocks[isess]->m_hSocket.hSock = hClntSock;
+			m_pCliSocks[isess]->m_ioBuffer = ioinfo;
+		}
+
+		//ë§Œë“¤ì–´ì§„ í•¸ë“¤ì— ì†Œì¼“ ë“±ë¡ 
+		auto result = CreateIoCompletionPort((HANDLE)hClntSock, m_handle, (DWORD_PTR)isess, 1);
+		if (result == NULL) {
+
+			printf("%ERR d\n", GetLastError());
+		}
+
+		
 		DWORD recvbytes= 0;
 		DWORD flags =0;
 
-		WSARecv(sHandle->hSock, &(ioinfo->wsaBuf), 1, &recvbytes, &flags, &(ioinfo->overlapped), NULL);
+		//overlappedrecv ê°ì²´ ì „ë‹¬ìš©
+		WSARecv(hClntSock, &(ioinfo->wsaRecvBuf), 1, &recvbytes, &flags, &(ioinfo->overlappedrecv), NULL);
 		 
 		Sleep(199);
 	}
@@ -148,6 +155,19 @@ int Netengine::StartServer()
 	//accept
 
 	return 0;
+}
+
+int Netengine::GetIndex()
+{
+	for (int index = 0; index < 100; index++)
+	{
+		if (m_pCliSocks.find(index) == m_pCliSocks.end())
+		{
+			return index;
+		}
+	}
+	//ë©”ëª¨ë¦¬ ë¶€ì¡± 
+	return -1;
 }
 
 int Socket::SetIpPort(char * pAddr, int nPort)
@@ -198,65 +218,75 @@ int ServerSocket::Create()
 
 unsigned WINAPI ThreadMain(void*  pPara)
 {
-	HANDLE Handle = (HANDLE)pPara;
+	Netengine *pEngine = (Netengine*)pPara;
 
-	printf("%s m_handle! %d\n",__FUNCTION__,  Handle);
 	DWORD nByte = -1;
 	SOCKET sock;
-	int iocpkey;
-	LPPER_HANDLE_DATA handleinfo =NULL;
-	LPPER_IO_DATA ioinfo =NULL;
+	int iocpkey; ;
+	OVERLAPPED *over;
 
 	DWORD flags=0;
 
 	while (1) {
 
+		GetQueuedCompletionStatus(pEngine->m_handle, &nByte, (PULONG_PTR)&iocpkey, (LPOVERLAPPED*)&over, INFINITE);
 
-		GetQueuedCompletionStatus(Handle,  &nByte, (PULONG_PTR)&iocpkey, (LPOVERLAPPED*)&ioinfo, INFINITE);
-		
-		 sock = iocpkey;
+		if (iocpkey >= 0)
+			sock = pEngine->m_pCliSocks[iocpkey]->m_hSocket.hSock;
 
-		
-		if (ioinfo->rwMode == READ) {
+		OVERLAPPED *RecvOver = &pEngine->m_pCliSocks[iocpkey]->m_ioBuffer->overlappedrecv;
+		OVERLAPPED *SendOver = &pEngine->m_pCliSocks[iocpkey]->m_ioBuffer->overlappedsend;
+		LPPER_IO_DATA  ioinfo = pEngine->m_pCliSocks[iocpkey]->m_ioBuffer;
+
+		if (ioinfo == NULL || sock == INVALID_SOCKET) {
+			continue;
+		}
+
+		if (over  == RecvOver) {
 			if (nByte == 0) {
-				//¿¬°á Á¾·á 
-				printf(" Quit %d \n", sock);
-				delete ioinfo;
-				delete handleinfo;
+				//ì—°ê²° ì¢…ë£Œ 
+				printf(" Quit %d \n", iocpkey);
+				//ë©”ëª¨ë¦¬ í•´ì œ í•´ì•¼í•¨
+				auto it = pEngine->m_pCliSocks.find(iocpkey);
+				if (it != pEngine->m_pCliSocks.end())
+				{
+					delete pEngine->m_pCliSocks[iocpkey]->m_ioBuffer;
+					delete pEngine->m_pCliSocks[iocpkey];
+					pEngine->m_pCliSocks.erase(it);
+				}
+				continue;
 			}
 
-			printf("READ %s\n", ioinfo->buffer);
+			//printf("overlappedrecv %p  %p \n", &ioinfo->overlappedrecv, &ioinfo->overlappedsend);
 
-			memset(&(ioinfo->overlapped), 0, sizeof(OVERLAPPED));
-			ioinfo->wsaBuf.len = nByte;
+			//echo send 
+			memset(&(RecvOver), 0, sizeof(OVERLAPPED));
+			 ioinfo->wsaSendBuf.buf = ioinfo->Recvbuffer;
+			ioinfo->wsaSendBuf.len = nByte;
 			ioinfo->rwMode = WRITE;
+			 
+			WSASend(sock, &(ioinfo->wsaSendBuf), 1, NULL, 0, &(ioinfo->overlappedsend), NULL);
 
-			WSASend(sock, &(ioinfo->wsaBuf), 1, NULL, 0, &(ioinfo->overlapped), NULL);
-
-			ioinfo = (LPPER_IO_DATA)new PER_IO_DATA;
-			
-			memset(&ioinfo->overlapped, 0, sizeof(OVERLAPPED));
-			memset(&ioinfo->wsaBuf, 0, BUF_SIZE);
-			ioinfo->wsaBuf.buf = ioinfo->buffer;
-			ioinfo->wsaBuf.len = BUF_SIZE;
+			 
+			//recv iocp ë“±ë¡
+			memset(&ioinfo->overlappedrecv, 0, sizeof(OVERLAPPED));
+			memset(&ioinfo->wsaRecvBuf, 0, BUF_SIZE);
+			ioinfo->wsaRecvBuf.buf = ioinfo->Recvbuffer;
+			ioinfo->wsaRecvBuf.len = BUF_SIZE;
 			ioinfo->rwMode = READ;
-			WSARecv(sock, &(ioinfo->wsaBuf), 1, NULL, &flags, &(ioinfo->overlapped), NULL);
+			WSARecv(sock, &(ioinfo->wsaRecvBuf), 1, NULL, &flags, &(ioinfo->overlappedrecv), NULL);
 		}
 		else {
-			printf(" message sent %d \n", sock);
-			delete ioinfo;
+			printf(" message sent %d => %d \n", iocpkey, nByte);
+			//delete ioinfo;
 		}
 	}
-
 	return 0;
 }
 
-//handle »ı¼º , thread µî·Ï
+//handle ìƒì„± , thread ë“±ë¡
 int ServerSocket::CreateIOCP()
 {
-
-
-
 	return 0;
 }
  
@@ -266,4 +296,5 @@ ClientSocket::ClientSocket()
 
 ClientSocket::~ClientSocket()
 {
+
 }
