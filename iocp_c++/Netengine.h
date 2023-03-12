@@ -4,10 +4,12 @@
 #include <process.h>
 #include <winsock2.h>
 #include <windows.h>
-//#include <vector>
+#include <vector>
+#include <map>
+
 //#include <thread>
 #include <WS2tcpip.h>
-#define BUF_SIZE 1000
+#define BUF_SIZE 1024
 #define READ	3
 #define	WRITE	5
 
@@ -34,8 +36,7 @@ typedef struct
 
 DWORD WINAPI EchoThreadMain(HANDLE CompletionPortIO);
 void ErrorHandling(char *message);
-
-
+ 
 class Socket {
 
 public:
@@ -44,6 +45,7 @@ public:
 	int m_nSess;
 	const char* m_szServerName = "";
 	char m_pAddr[100] ={0,};
+	unsigned int m_uiaddr = 0;
 	int m_nPort = -1 ;
 
 	//vector<char> m_vRecvBuffer;
@@ -94,12 +96,18 @@ public:
 	~Netengine();
 
 	int InitNet();
-	
+	int MakeClientSocket(int nServerType,  char *addr, int port);
+	int Run();
+
+	int StartServer();
+
+
+	HANDLE m_handle = NULL;
 
 	WSADATA	m_wsaData;
 	ServerSocket *m_pServSock;
-	ClientSocket *m_pCliSock;
-
+	//ClientSocket *m_pCliSock;
+	std::map<int , ClientSocket *> m_pCliSocks;
 	
 };
 
